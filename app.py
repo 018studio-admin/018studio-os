@@ -13,7 +13,7 @@ st.set_page_config(page_title="018studio OS", page_icon="💎", layout="wide", i
 # --- 2. CSS KELAS DUNIA ---
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght=400;500;600;700;800;900&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap');
     html, body, .stApp { font-family: 'Montserrat', sans-serif !important; background-color: #f8fafc !important; }
     h1, h2, h3 { color: #0f172a !important; font-weight: 900 !important; letter-spacing: -0.5px; }
     p, span, div { color: #334155 !important; font-size: 16px; }
@@ -39,24 +39,32 @@ def tarik_data_gudang():
             "https://www.googleapis.com/auth/drive"
         ]
         
-        # SENSOR: Kalau di awan (Streamlit Cloud), pakai jalur rahasia
         if "google_kunci" in st.secrets:
             kunci_dict = json.loads(st.secrets["google_kunci"])
             creds = Credentials.from_service_account_info(kunci_dict, scopes=scopes)
-        # SENSOR: Kalau di laptop, pakai file JSON biasa
         else:
             creds = Credentials.from_service_account_file("kunci.json", scopes=scopes)
             
         client = gspread.authorize(creds)
         gsheet = client.open("DATABASE STOCK")
-        tab_stok = gsheet.worksheet("stok_ready")
         
-        data = tab_stok.get_all_records()
-        return pd.DataFrame(data), True, client
+        # Tarik Data Stok
+        tab_stok = gsheet.worksheet("stok_ready")
+        df_stok = pd.DataFrame(tab_stok.get_all_records())
+        
+        # Tarik Data Produksi (Sekarang ikutan masuk ke brankas memori biar aman)
+        try:
+            tab_prod = gsheet.worksheet("data_produksi")
+            df_prod = pd.DataFrame(tab_prod.get_all_records())
+        except:
+            df_prod = pd.DataFrame()
+        
+        return df_stok, df_prod, True, client
     except Exception as e:
-        return pd.DataFrame(), False, str(e)
+        return pd.DataFrame(), pd.DataFrame(), False, str(e)
 
-df_stok, koneksi_sukses, client_atau_error = tarik_data_gudang()
+# Buka brankasnya sekaligus di awal
+df_stok, df_prod, koneksi_sukses, client_atau_error = tarik_data_gudang()
 
 # --- 4. PANEL SAMPING (SIDEBAR) ---
 with st.sidebar:
@@ -109,7 +117,7 @@ if menu == "📊 Executive Dashboard":
     )
 
 # ==========================================
-# MENU 2: POS / KASIR (DENGAN SECURITY PIN)
+# MENU 2: POS / KASIR 
 # ==========================================
 elif menu == "💳 Point of Sales (POS)":
     st.markdown("<h1 style='text-transform: uppercase;'>TERMINAL TRANSAKSI</h1>", unsafe_allow_html=True)
@@ -158,7 +166,6 @@ elif menu == "💳 Point of Sales (POS)":
                                 tab_stok.update_cell(cell_pencarian.row, 3, stok_lama - qty)
                                 
                                 st.cache_data.clear()
-                                
                                 st.toast(f"✅ Data terkirim ke awan!", icon="🚀")
                                 st.success("Akses Diberikan. Gudang G-Sheets 018studio telah disesuaikan.")
                                 st.info(f"**STRUK VIRTUAL:**\n* {qty}x {sku_pilihan} (Rp {harga_asli:,})\n* Sub-total: Rp {sub_total:,}\n* Diskon: - Rp {diskon:,}\n* **Total: Rp {total_akhir:,}**")
@@ -166,19 +173,11 @@ elif menu == "💳 Point of Sales (POS)":
                                 st.error(f"❌ Sistem Gagal: {e}")
 
 # ==========================================
-# MENU 3: PRODUCTION PIPELINE (LIVE REVISI)
+# MENU 3: PRODUCTION PIPELINE
 # ==========================================
 elif menu == "⚙️ Production Pipeline":
     st.markdown("<h1 style='text-transform: uppercase;'>PRODUCTION PIPELINE</h1>", unsafe_allow_html=True)
     st.markdown("<p>Pusat kendali fase produksi pesanan kustom.</p>", unsafe_allow_html=True)
-    
-    # Menarik data produksi terbaru
-    try:
-        gsheet = client_atau_error.open("DATABASE STOCK")
-        tab_prod = gsheet.worksheet("data_produksi")
-        df_prod = pd.DataFrame(tab_prod.get_all_records())
-    except:
-        df_prod = pd.DataFrame()
     
     # FORM 1: TAMBAH PROYEK BARU
     with st.expander("➕ TAMBAH PROYEK BARU", expanded=False):
@@ -195,11 +194,10 @@ elif menu == "⚙️ Production Pipeline":
                 else:
                     with st.spinner('Menambah proyek...'):
                         try:
-                            # --- LOGIKA BARU: ANTI-TIMPA ---
-                            # Ngitung jumlah baris data yang ada, lalu tambah 2 buat dapet posisi baris kosong paling bawah
-                            baris_baru = len(df_prod) + 2 
+                            gsheet = client_atau_error.open("DATABASE STOCK")
+                            tab_prod = gsheet.worksheet("data_produksi")
                             
-                            # Paksa masukin data tepat di baris baru tersebut
+                            baris_baru = len(df_prod) + 2 
                             tab_prod.insert_row([n_proyek, n_jumlah, fase, str(deadline), "Aktif"], index=baris_baru)
                             
                             st.success("Proyek berhasil ditambah!")
@@ -208,7 +206,7 @@ elif menu == "⚙️ Production Pipeline":
                         except Exception as e:
                             st.error(f"Gagal menyimpan. Error: {e}")
 
-    # FORM 2: UPDATE FASE PROYEK (OTOMATIS BERPINDAH WARNA)
+    # FORM 2: UPDATE FASE PROYEK
     if not df_prod.empty:
         with st.expander("🔄 UPDATE FASE PROYEK AKTIF", expanded=False):
             with st.form("form_update_produksi"):
@@ -219,20 +217,23 @@ elif menu == "⚙️ Production Pipeline":
                 if submit_update:
                     with st.spinner('Mengupdate status proyek di awan...'):
                         try:
+                            gsheet = client_atau_error.open("DATABASE STOCK")
+                            tab_prod = gsheet.worksheet("data_produksi")
+                            
                             cell = tab_prod.find(proyek_pilihan)
-                            tab_prod.update_cell(cell.row, 3, fase_baru) # Update kolom ke-3 (Fase)
-                            st.success(f"Berhasil! {proyek_pilihan} sekarang berada di fase {fase_baru}.")
+                            tab_prod.update_cell(cell.row, 3, fase_baru)
+                            
+                            st.success(f"Berhasil! Proyek sekarang berada di fase {fase_baru}.")
                             st.cache_data.clear()
                             st.rerun()
                         except Exception as e:
                             st.error(f"Gagal mengupdate. Error: {e}")
 
-    # TAMPILAN MONITORING UTAMA (KANBAN BOARD 3 KOLOM WARNA)
+    # TAMPILAN MONITORING UTAMA
     st.markdown("---")
     st.subheader("📋 KANBAN BOARD PRODUCTION STATUS")
     
     if not df_prod.empty:
-        # Bikin tata letak 3 kolom sejajar (Kiri, Tengah, Kanan)
         col_merah, col_kuning, col_hijau = st.columns(3)
         
         with col_merah:
