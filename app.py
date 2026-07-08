@@ -13,7 +13,7 @@ st.set_page_config(page_title="018studio OS", page_icon="💎", layout="wide", i
 # --- 2. CSS KELAS DUNIA ---
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght=400;500;600;700;800;900&display=swap');
     html, body, .stApp { font-family: 'Montserrat', sans-serif !important; background-color: #f8fafc !important; }
     h1, h2, h3 { color: #0f172a !important; font-weight: 900 !important; letter-spacing: -0.5px; }
     p, span, div { color: #334155 !important; font-size: 16px; }
@@ -166,13 +166,21 @@ elif menu == "💳 Point of Sales (POS)":
                                 st.error(f"❌ Sistem Gagal: {e}")
 
 # ==========================================
-# MENU 3: PRODUCTION PIPELINE (DENGAN FORM INPUT)
+# MENU 3: PRODUCTION PIPELINE (LIVE REVISI)
 # ==========================================
 elif menu == "⚙️ Production Pipeline":
     st.markdown("<h1 style='text-transform: uppercase;'>PRODUCTION PIPELINE</h1>", unsafe_allow_html=True)
     st.markdown("<p>Pusat kendali fase produksi pesanan kustom.</p>", unsafe_allow_html=True)
     
-    # 1. FORM TAMBAH PROYEK
+    # Menarik data produksi terbaru
+    try:
+        gsheet = client_atau_error.open("DATABASE STOCK")
+        tab_prod = gsheet.worksheet("data_produksi")
+        df_prod = pd.DataFrame(tab_prod.get_all_records())
+    except:
+        df_prod = pd.DataFrame()
+    
+    # FORM 1: TAMBAH PROYEK BARU
     with st.expander("➕ TAMBAH PROYEK BARU", expanded=False):
         with st.form("form_produksi"):
             n_proyek = st.text_input("Nama Proyek/Klien:")
@@ -182,12 +190,67 @@ elif menu == "⚙️ Production Pipeline":
             submit_proyek = st.form_submit_button("MASUKKAN KE PIPELINE")
             
             if submit_proyek:
-                with st.spinner('Menambah proyek...'):
-                    try:
-                        gsheet = client_atau_error.open("DATABASE STOCK")
-                        tab_prod = gsheet.worksheet("data_produksi")
-                        tab_prod.append_row([n_proyek, n_jumlah, fase, str(deadline), "Aktif"])
-                        st.success("Proyek berhasil ditambah!")
-                        st.cache_data.clear()
-                    except Exception as e:
-                        st.error(f"Gagal menyimpan. Pastikan tab 'data_produksi' sudah dibuat di Google Sheets. Error: {e}")
+                if n_proyek == "":
+                    st.error("Nama proyek tidak boleh kosong!")
+                else:
+                    with st.spinner('Menambah proyek...'):
+                        try:
+                            tab_prod.append_row([n_proyek, n_jumlah, fase, str(deadline), "Aktif"])
+                            st.success("Proyek berhasil ditambah!")
+                            st.cache_data.clear()
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Gagal menyimpan. Error: {e}")
+
+    # FORM 2: UPDATE FASE PROYEK (OTOMATIS BERPINDAH WARNA)
+    if not df_prod.empty:
+        with st.expander("🔄 UPDATE FASE PROYEK AKTIF", expanded=False):
+            with st.form("form_update_produksi"):
+                proyek_pilihan = st.selectbox("Pilih Proyek yang Akan Di-update:", df_prod['Nama Proyek'].tolist())
+                fase_baru = st.selectbox("Ubah Ke Fase Baru:", ["🔴 Design & Approval", "🟡 Sublimation & Press", "🟢 Assembly & QC"])
+                submit_update = st.form_submit_button("PERBARUI FASE PROYEK")
+                
+                if submit_update:
+                    with st.spinner('Mengupdate status proyek di awan...'):
+                        try:
+                            cell = tab_prod.find(proyek_pilihan)
+                            tab_prod.update_cell(cell.row, 3, fase_baru) # Update kolom ke-3 (Fase)
+                            st.success(f"Berhasil! {proyek_pilihan} sekarang berada di fase {fase_baru}.")
+                            st.cache_data.clear()
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Gagal mengupdate. Error: {e}")
+
+    # TAMPILAN MONITORING UTAMA (KANBAN BOARD 3 KOLOM WARNA)
+    st.markdown("---")
+    st.subheader("📋 KANBAN BOARD PRODUCTION STATUS")
+    
+    if not df_prod.empty:
+        # Bikin tata letak 3 kolom sejajar (Kiri, Tengah, Kanan)
+        col_merah, col_kuning, col_hijau = st.columns(3)
+        
+        with col_merah:
+            st.markdown("<h4 style='color: #ef4444; font-weight:800; text-align:center;'>🔴 DESIGN & APPROVAL</h4>", unsafe_allow_html=True)
+            df_red = df_prod[df_prod['Fase'] == "🔴 Design & Approval"]
+            if not df_red.empty:
+                st.dataframe(df_red[['Nama Proyek', 'Jumlah', 'Deadline']], hide_index=True, use_container_width=True)
+            else:
+                st.info("Tidak ada antrean desain.")
+                
+        with col_kuning:
+            st.markdown("<h4 style='color: #eab308; font-weight:800; text-align:center;'>🟡 SUBLIMATION & PRESS</h4>", unsafe_allow_html=True)
+            df_yellow = df_prod[df_prod['Fase'] == "🟡 Sublimation & Press"]
+            if not df_yellow.empty:
+                st.dataframe(df_yellow[['Nama Proyek', 'Jumlah', 'Deadline']], hide_index=True, use_container_width=True)
+            else:
+                st.info("Mesin produksi sedang santai.")
+                
+        with col_hijau:
+            st.markdown("<h4 style='color: #22c55e; font-weight:800; text-align:center;'>🟢 ASSEMBLY & QC</h4>", unsafe_allow_html=True)
+            df_green = df_prod[df_prod['Fase'] == "🟢 Assembly & QC"]
+            if not df_green.empty:
+                st.dataframe(df_green[['Nama Proyek', 'Jumlah', 'Deadline']], hide_index=True, use_container_width=True)
+            else:
+                st.info("Belum ada barang di meja QC.")
+    else:
+        st.warning("⚠️ Tab 'data_produksi' kosong atau belum terdeteksi di Google Sheets. Silakan buat tab-nya dan masukkan proyek pertama lo!")
