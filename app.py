@@ -253,4 +253,4 @@ elif menu == "⚙️ Production Pipeline":
             else:
                 st.info("Belum ada barang di meja QC.")
     else:
-        st.warning("⚠️ Tab 'data_produksi' kosong atau belum terdeteksi di Google Sheets. Silakan buat tab-nya dan masukkan proyek pertama lo!")
+        st.warning("⚠️ Tab 'data_produksi' kosong atau belum terdeteksi di Google Sheets.")
