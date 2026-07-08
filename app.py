@@ -165,16 +165,42 @@ elif menu == "💳 Point of Sales (POS)":
                             except Exception as e:
                                 st.error(f"❌ Sistem Gagal: {e}")
 
+# (Copy dari baris 1 s/d 144 kode sebelumnya, lalu ganti bagian menu Pipeline dengan ini)
+
 # ==========================================
-# MENU 3: PRODUCTION PIPELINE
+# MENU 3: PRODUCTION PIPELINE (DENGAN FORM INPUT)
 # ==========================================
 elif menu == "⚙️ Production Pipeline":
     st.markdown("<h1 style='text-transform: uppercase;'>PRODUCTION PIPELINE</h1>", unsafe_allow_html=True)
-    st.markdown("<p>Pusat kendali fase produksi pesanan kustom B2B.</p>", unsafe_allow_html=True)
+    st.markdown("<p>Pusat kendali fase produksi pesanan kustom.</p>", unsafe_allow_html=True)
     
-    with st.expander("🔴 FASE 1: Design & Approval", expanded=True):
-        st.info("Tidak ada antrean desain.")
-    with st.expander("🟡 FASE 2: Sublimation & Press", expanded=True):
-        st.warning("⚠️ 1 Proyek Aktif: Tim Futsal Angkasa (24 unit) - Menunggu slot press.")
-    with st.expander("🟢 FASE 3: External Assembly & QC", expanded=True):
-        st.success("✅ 1 Proyek Selesai: Jersey Sepeda (10 unit) - Siap distribusi.")
+    # 1. FORM TAMBAH PROYEK
+    with st.expander("➕ TAMBAH PROYEK BARU", expanded=False):
+        with st.form("form_produksi"):
+            n_proyek = st.text_input("Nama Proyek/Klien:")
+            n_jumlah = st.number_input("Jumlah (Unit):", min_value=1)
+            fase = st.selectbox("Fase Sekarang:", ["🔴 Design & Approval", "🟡 Sublimation & Press", "🟢 Assembly & QC"])
+            deadline = st.date_input("Deadline:")
+            submit_proyek = st.form_submit_button("MASUKKAN KE PIPELINE")
+            
+            if submit_proyek:
+                with st.spinner('Menambah proyek...'):
+                    gsheet = client_atau_error.open("DATABASE STOCK")
+                    tab_prod = gsheet.worksheet("data_produksi")
+                    tab_prod.append_row([n_proyek, n_jumlah, fase, str(deadline), "Aktif"])
+                    st.success("Proyek berhasil ditambah!")
+                    st.cache_data.clear()
+
+    # 2. TAMPILAN MONITORING OTOMATIS
+    st.markdown("---")
+    try:
+        gsheet = client_atau_error.open("DATABASE STOCK")
+        df_prod = pd.DataFrame(gsheet.worksheet("data_produksi").get_all_records())
+        
+        st.subheader("📋 DAFTAR PROYEK AKTIF")
+        if not df_prod.empty:
+            st.dataframe(df_prod, use_container_width=True)
+        else:
+            st.info("Tidak ada proyek aktif saat ini.")
+    except:
+        st.error("Gagal menarik data proyek.")
