@@ -178,3 +178,16 @@ elif menu == "⚙️ Production Pipeline":
             n_proyek = st.text_input("Nama Proyek/Klien:")
             n_jumlah = st.number_input("Jumlah (Unit):", min_value=1)
             fase = st.selectbox("Fase Sekarang:", ["🔴 Design & Approval", "🟡 Sublimation & Press", "🟢 Assembly & QC"])
+            deadline = st.date_input("Deadline:")
+            submit_proyek = st.form_submit_button("MASUKKAN KE PIPELINE")
+            
+            if submit_proyek:
+                with st.spinner('Menambah proyek...'):
+                    try:
+                        gsheet = client_atau_error.open("DATABASE STOCK")
+                        tab_prod = gsheet.worksheet("data_produksi")
+                        tab_prod.append_row([n_proyek, n_jumlah, fase, str(deadline), "Aktif"])
+                        st.success("Proyek berhasil ditambah!")
+                        st.cache_data.clear()
+                    except Exception as e:
+                        st.error(f"Gagal menyimpan. Pastikan tab 'data_produksi' sudah dibuat di Google Sheets. Error: {e}")
