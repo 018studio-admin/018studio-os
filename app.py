@@ -43,7 +43,7 @@ def tarik_data_gudang():
         if "google_kunci" in st.secrets:
             kunci_dict = json.loads(st.secrets["google_kunci"])
             creds = Credentials.from_service_account_info(kunci_dict, scopes=scopes)
-        # SENSOR: Kalau di laptop lo, pakai file JSON biasa
+        # SENSOR: Kalau di laptop, pakai file JSON biasa
         else:
             creds = Credentials.from_service_account_file("kunci.json", scopes=scopes)
             
@@ -149,58 +149,4 @@ elif menu == "💳 Point of Sales (POS)":
                         with st.spinner('Mengirim instruksi ke Google Sheets...'):
                             try:
                                 gsheet = client_atau_error.open("DATABASE STOCK")
-                                tab_log = gsheet.worksheet("log_penjualan")
-                                tab_stok = gsheet.worksheet("stok_ready")
-                                
-                                tab_log.append_row([waktu_skrg, sku_kode, sku_pilihan, kanal, nama_pembeli, qty, diskon, total_akhir])
-                                
-                                cell_pencarian = tab_stok.find(sku_kode)
-                                tab_stok.update_cell(cell_pencarian.row, 3, stok_lama - qty)
-                                
-                                st.cache_data.clear()
-                                
-                                st.toast(f"✅ Data terkirim ke awan!", icon="🚀")
-                                st.success("Akses Diberikan. Gudang G-Sheets 018studio telah disesuaikan.")
-                                st.info(f"**STRUK VIRTUAL:**\n* {qty}x {sku_pilihan} (Rp {harga_asli:,})\n* Sub-total: Rp {sub_total:,}\n* Diskon: - Rp {diskon:,}\n* **Total: Rp {total_akhir:,}**")
-                            except Exception as e:
-                                st.error(f"❌ Sistem Gagal: {e}")
-
-# (Copy dari baris 1 s/d 144 kode sebelumnya, lalu ganti bagian menu Pipeline dengan ini)
-
-# ==========================================
-# MENU 3: PRODUCTION PIPELINE (DENGAN FORM INPUT)
-# ==========================================
-elif menu == "⚙️ Production Pipeline":
-    st.markdown("<h1 style='text-transform: uppercase;'>PRODUCTION PIPELINE</h1>", unsafe_allow_html=True)
-    st.markdown("<p>Pusat kendali fase produksi pesanan kustom.</p>", unsafe_allow_html=True)
-    
-    # 1. FORM TAMBAH PROYEK
-    with st.expander("➕ TAMBAH PROYEK BARU", expanded=False):
-        with st.form("form_produksi"):
-            n_proyek = st.text_input("Nama Proyek/Klien:")
-            n_jumlah = st.number_input("Jumlah (Unit):", min_value=1)
-            fase = st.selectbox("Fase Sekarang:", ["🔴 Design & Approval", "🟡 Sublimation & Press", "🟢 Assembly & QC"])
-            deadline = st.date_input("Deadline:")
-            submit_proyek = st.form_submit_button("MASUKKAN KE PIPELINE")
-            
-            if submit_proyek:
-                with st.spinner('Menambah proyek...'):
-                    gsheet = client_atau_error.open("DATABASE STOCK")
-                    tab_prod = gsheet.worksheet("data_produksi")
-                    tab_prod.append_row([n_proyek, n_jumlah, fase, str(deadline), "Aktif"])
-                    st.success("Proyek berhasil ditambah!")
-                    st.cache_data.clear()
-
-    # 2. TAMPILAN MONITORING OTOMATIS
-    st.markdown("---")
-    try:
-        gsheet = client_atau_error.open("DATABASE STOCK")
-        df_prod = pd.DataFrame(gsheet.worksheet("data_produksi").get_all_records())
-        
-        st.subheader("📋 DAFTAR PROYEK AKTIF")
-        if not df_prod.empty:
-            st.dataframe(df_prod, use_container_width=True)
-        else:
-            st.info("Tidak ada proyek aktif saat ini.")
-    except:
-        st.error("Gagal menarik data proyek.")
+                                tab_log = gsheet
