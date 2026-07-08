@@ -195,7 +195,13 @@ elif menu == "⚙️ Production Pipeline":
                 else:
                     with st.spinner('Menambah proyek...'):
                         try:
-                            tab_prod.append_row([n_proyek, n_jumlah, fase, str(deadline), "Aktif"])
+                            # --- LOGIKA BARU: ANTI-TIMPA ---
+                            # Ngitung jumlah baris data yang ada, lalu tambah 2 buat dapet posisi baris kosong paling bawah
+                            baris_baru = len(df_prod) + 2 
+                            
+                            # Paksa masukin data tepat di baris baru tersebut
+                            tab_prod.insert_row([n_proyek, n_jumlah, fase, str(deadline), "Aktif"], index=baris_baru)
+                            
                             st.success("Proyek berhasil ditambah!")
                             st.cache_data.clear()
                             st.rerun()
