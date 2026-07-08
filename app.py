@@ -48,11 +48,9 @@ def tarik_data_gudang():
         client = gspread.authorize(creds)
         gsheet = client.open("DATABASE STOCK")
         
-        # Tarik Data Stok
         tab_stok = gsheet.worksheet("stok_ready")
         df_stok = pd.DataFrame(tab_stok.get_all_records())
         
-        # Tarik Data Produksi (Sekarang ikutan masuk ke brankas memori biar aman)
         try:
             tab_prod = gsheet.worksheet("data_produksi")
             df_prod = pd.DataFrame(tab_prod.get_all_records())
@@ -63,7 +61,6 @@ def tarik_data_gudang():
     except Exception as e:
         return pd.DataFrame(), pd.DataFrame(), False, str(e)
 
-# Buka brankasnya sekaligus di awal
 df_stok, df_prod, koneksi_sukses, client_atau_error = tarik_data_gudang()
 
 # --- 4. PANEL SAMPING (SIDEBAR) ---
@@ -83,6 +80,17 @@ with st.sidebar:
 if not koneksi_sukses:
     st.error(f"⚠️ Gagal nyambung ke Google Sheets. Error: {client_atau_error}")
     st.stop() 
+
+# DAFTAR FASE PRODUKSI
+fase_list = [
+    "🎨 1. Design", 
+    "👀 2. Proofing", 
+    "⚙️ 3. Setting", 
+    "🖨️ 4. Print", 
+    "🔥 5. Press", 
+    "🪡 6. Jahit", 
+    "🔎 7. QC"
+]
 
 # ==========================================
 # MENU 1: EXECUTIVE DASHBOARD
@@ -179,12 +187,17 @@ elif menu == "⚙️ Production Pipeline":
     st.markdown("<h1 style='text-transform: uppercase;'>PRODUCTION PIPELINE</h1>", unsafe_allow_html=True)
     st.markdown("<p>Pusat kendali fase produksi pesanan kustom.</p>", unsafe_allow_html=True)
     
+    # Hanya filter proyek yang statusnya masih "Aktif" untuk ditampilkan di layar
+    df_aktif = pd.DataFrame()
+    if not df_prod.empty and 'Status' in df_prod.columns:
+        df_aktif = df_prod[df_prod['Status'] == "Aktif"]
+    
     # FORM 1: TAMBAH PROYEK BARU
     with st.expander("➕ TAMBAH PROYEK BARU", expanded=False):
         with st.form("form_produksi"):
             n_proyek = st.text_input("Nama Proyek/Klien:")
             n_jumlah = st.number_input("Jumlah (Unit):", min_value=1)
-            fase = st.selectbox("Fase Sekarang:", ["🔴 Design & Approval", "🟡 Sublimation & Press", "🟢 Assembly & QC"])
+            fase = st.selectbox("Mulai di Fase:", fase_list)
             deadline = st.date_input("Deadline:")
             submit_proyek = st.form_submit_button("MASUKKAN KE PIPELINE")
             
@@ -206,58 +219,86 @@ elif menu == "⚙️ Production Pipeline":
                         except Exception as e:
                             st.error(f"Gagal menyimpan. Error: {e}")
 
-    # FORM 2: UPDATE FASE PROYEK
-    if not df_prod.empty:
-        with st.expander("🔄 UPDATE FASE PROYEK AKTIF", expanded=False):
+    # FORM 2: UPDATE FASE PROYEK (DENGAN FITUR ARSIP/SELESAI)
+    if not df_aktif.empty:
+        with st.expander("🔄 UPDATE / SELESAIKAN PROYEK", expanded=False):
             with st.form("form_update_produksi"):
-                proyek_pilihan = st.selectbox("Pilih Proyek yang Akan Di-update:", df_prod['Nama Proyek'].tolist())
-                fase_baru = st.selectbox("Ubah Ke Fase Baru:", ["🔴 Design & Approval", "🟡 Sublimation & Press", "🟢 Assembly & QC"])
-                submit_update = st.form_submit_button("PERBARUI FASE PROYEK")
+                proyek_pilihan = st.selectbox("Pilih Proyek Aktif:", df_aktif['Nama Proyek'].tolist())
+                
+                # Tambahin opsi "Delivered" di paling bawah
+                opsi_update = fase_list + ["📦 DELIVERED (SELESAI)"]
+                fase_baru = st.selectbox("Ubah Ke:", opsi_update)
+                submit_update = st.form_submit_button("UPDATE STATUS")
                 
                 if submit_update:
-                    with st.spinner('Mengupdate status proyek di awan...'):
+                    with st.spinner('Mengupdate sistem...'):
                         try:
                             gsheet = client_atau_error.open("DATABASE STOCK")
                             tab_prod = gsheet.worksheet("data_produksi")
                             
                             cell = tab_prod.find(proyek_pilihan)
-                            tab_prod.update_cell(cell.row, 3, fase_baru)
                             
-                            st.success(f"Berhasil! Proyek sekarang berada di fase {fase_baru}.")
+                            if fase_baru == "📦 DELIVERED (SELESAI)":
+                                tab_prod.update_cell(cell.row, 3, fase_baru) # Update Fase
+                                tab_prod.update_cell(cell.row, 5, "Selesai") # Update Status jadi Selesai
+                                st.success(f"🎉 Mantap! Proyek {proyek_pilihan} berhasil dikirim dan diarsipkan.")
+                            else:
+                                tab_prod.update_cell(cell.row, 3, fase_baru)
+                                tab_prod.update_cell(cell.row, 5, "Aktif") # Pastikan status tetap aktif
+                                st.success(f"Proyek pindah ke fase {fase_baru}.")
+                                
                             st.cache_data.clear()
                             st.rerun()
                         except Exception as e:
                             st.error(f"Gagal mengupdate. Error: {e}")
 
-    # TAMPILAN MONITORING UTAMA
+    # TAMPILAN MONITORING UTAMA (KANBAN BOARD 7 TAHAP)
     st.markdown("---")
-    st.subheader("📋 KANBAN BOARD PRODUCTION STATUS")
+    st.subheader("📋 KANBAN BOARD (ACTIVE PROJECTS)")
     
-    if not df_prod.empty:
-        col_merah, col_kuning, col_hijau = st.columns(3)
+    if not df_aktif.empty:
+        # BARIS 1: 4 Tahap Pertama
+        c1, c2, c3, c4 = st.columns(4)
         
-        with col_merah:
-            st.markdown("<h4 style='color: #ef4444; font-weight:800; text-align:center;'>🔴 DESIGN & APPROVAL</h4>", unsafe_allow_html=True)
-            df_red = df_prod[df_prod['Fase'] == "🔴 Design & Approval"]
-            if not df_red.empty:
-                st.dataframe(df_red[['Nama Proyek', 'Jumlah', 'Deadline']], hide_index=True, use_container_width=True)
-            else:
-                st.info("Tidak ada antrean desain.")
-                
-        with col_kuning:
-            st.markdown("<h4 style='color: #eab308; font-weight:800; text-align:center;'>🟡 SUBLIMATION & PRESS</h4>", unsafe_allow_html=True)
-            df_yellow = df_prod[df_prod['Fase'] == "🟡 Sublimation & Press"]
-            if not df_yellow.empty:
-                st.dataframe(df_yellow[['Nama Proyek', 'Jumlah', 'Deadline']], hide_index=True, use_container_width=True)
-            else:
-                st.info("Mesin produksi sedang santai.")
-                
-        with col_hijau:
-            st.markdown("<h4 style='color: #22c55e; font-weight:800; text-align:center;'>🟢 ASSEMBLY & QC</h4>", unsafe_allow_html=True)
-            df_green = df_prod[df_prod['Fase'] == "🟢 Assembly & QC"]
-            if not df_green.empty:
-                st.dataframe(df_green[['Nama Proyek', 'Jumlah', 'Deadline']], hide_index=True, use_container_width=True)
-            else:
-                st.info("Belum ada barang di meja QC.")
+        with c1:
+            st.markdown("<h5 style='color: #3b82f6; text-align:center;'>🎨 DESIGN</h5>", unsafe_allow_html=True)
+            df_1 = df_aktif[df_aktif['Fase'] == fase_list[0]]
+            if not df_1.empty: st.dataframe(df_1[['Nama Proyek', 'Deadline']], hide_index=True, use_container_width=True)
+            
+        with c2:
+            st.markdown("<h5 style='color: #8b5cf6; text-align:center;'>👀 PROOFING</h5>", unsafe_allow_html=True)
+            df_2 = df_aktif[df_aktif['Fase'] == fase_list[1]]
+            if not df_2.empty: st.dataframe(df_2[['Nama Proyek', 'Deadline']], hide_index=True, use_container_width=True)
+            
+        with c3:
+            st.markdown("<h5 style='color: #06b6d4; text-align:center;'>⚙️ SETTING</h5>", unsafe_allow_html=True)
+            df_3 = df_aktif[df_aktif['Fase'] == fase_list[2]]
+            if not df_3.empty: st.dataframe(df_3[['Nama Proyek', 'Deadline']], hide_index=True, use_container_width=True)
+            
+        with c4:
+            st.markdown("<h5 style='color: #eab308; text-align:center;'>🖨️ PRINT</h5>", unsafe_allow_html=True)
+            df_4 = df_aktif[df_aktif['Fase'] == fase_list[3]]
+            if not df_4.empty: st.dataframe(df_4[['Nama Proyek', 'Deadline']], hide_index=True, use_container_width=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # BARIS 2: 3 Tahap Eksekusi
+        c5, c6, c7 = st.columns(3)
+        
+        with c5:
+            st.markdown("<h5 style='color: #f97316; text-align:center;'>🔥 PRESS</h5>", unsafe_allow_html=True)
+            df_5 = df_aktif[df_aktif['Fase'] == fase_list[4]]
+            if not df_5.empty: st.dataframe(df_5[['Nama Proyek', 'Deadline']], hide_index=True, use_container_width=True)
+            
+        with c6:
+            st.markdown("<h5 style='color: #ec4899; text-align:center;'>🪡 JAHIT</h5>", unsafe_allow_html=True)
+            df_6 = df_aktif[df_aktif['Fase'] == fase_list[5]]
+            if not df_6.empty: st.dataframe(df_6[['Nama Proyek', 'Deadline']], hide_index=True, use_container_width=True)
+            
+        with c7:
+            st.markdown("<h5 style='color: #22c55e; text-align:center;'>🔎 QC</h5>", unsafe_allow_html=True)
+            df_7 = df_aktif[df_aktif['Fase'] == fase_list[6]]
+            if not df_7.empty: st.dataframe(df_7[['Nama Proyek', 'Deadline']], hide_index=True, use_container_width=True)
+
     else:
-        st.warning("⚠️ Tab 'data_produksi' kosong atau belum terdeteksi di Google Sheets.")
+        st.info("Belum ada proyek yang berjalan. Silakan tambah proyek baru!")
